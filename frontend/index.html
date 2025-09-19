@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Literary Network Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20px;
+            background: #f0f2f5;
+            display: flex;
+            gap: 20px;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .visualization-container {
+            flex: 1;
+            min-width: 800px;
+        }
+
+        .sidebar {
+            width: 400px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            padding: 20px;
+            max-height: 900px;
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .character-item {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .character-item:hover {
+            background: #e3f2fd;
+            transform: translateX(5px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+
+        .character-name {
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 16px;
+            margin-bottom: 5px;
+            cursor: pointer;
+        }
+
+        .character-total {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .interactions-list {
+            margin-top: 8px;
+            padding-left: 10px;
+        }
+
+        .interaction-item {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin: 2px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .interaction-item:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
+
+        #network { 
+            border: 2px solid #ddd; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        #progress { 
+            margin: 20px 0; 
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        #debug { 
+            margin: 20px 0; 
+            background: #2c3e50; 
+            color: #ecf0f1;
+            padding: 15px; 
+            border-radius: 8px; 
+            max-height: 150px; 
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        .character-node { 
+            stroke-width: 3px;
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
+            transition: all 0.3s ease;
+        }
+
+        .character-label {
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 600;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            text-anchor: middle;
+            dominant-baseline: central;
+        }
+
+        .interaction-link { 
+            stroke-opacity: 0.7;
+            filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.2));
+        }
+
+        #controls { 
+            margin: 20px 0; 
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .control-button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .control-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .stats {
+            display: inline-block;
+            margin-left: 20px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .highlighted {
+            background: #fff3cd !important;
+            border-left-color: #ffc107 !important;
+        }
+
+        .page-title {
+            text-align: center; 
+            color: #2c3e50; 
+            margin-bottom: 30px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div style="width: 100%;">
+        <h1 class="page-title">📚 Literary Character Network</h1>
+        
+        <div class="main-container">
+            <div class="visualization-container">
+                <div id="controls">
+                    <button class="control-button" onclick="startAnalysis()">🚀 Start Analysis</button>
+                    <button class="control-button" onclick="testConnection()">🔌 Test Connection</button>
+                    <button class="control-button" onclick="clearDebug()">🧹 Clear Debug</button>
+                    <span class="stats" id="network-stats">Ready to analyze...</span>
+                    <div id="progress"></div>
+                </div>
+                
+                <svg id="network" width="900" height="700"></svg>
+                <div id="debug"></div>
+            </div>
+
+            <div class="sidebar">
+                <h2>📊 Character Network</h2>
+                <input type="text" class="search-box" id="character-search" placeholder="🔍 Search characters..." onkeyup="filterCharacters()">
+                <div id="character-list">
+                    <div style="text-align: center; color: #666; margin-top: 50px;">
+                        Start analysis to see character interactions...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Debug logging
+        function log(message) {
+            console.log(message);
+            const debugDiv = document.getElementById('debug');
+            debugDiv.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+            debugDiv.scrollTop = debugDiv.scrollHeight;
+        }
+
+        function clearDebug() {
+            document.getElementById('debug').innerHTML = '';
+        }
+
+        const socket = io('http://localhost:3000');
+        let sessionId = `session_${Date.now()}`;
+        let currentData = null; // Store current data for filtering
+        
+        log(`🎯 Initializing with sessionId: ${sessionId}`);
+
+        // Socket connection events
+        socket.on('connect', () => log('✅ Socket connected'));
+        socket.on('disconnect', () => log('❌ Socket disconnected'));
+        socket.on('connect_error', (error) => log(`❌ Connection error: ${error.message}`));
+        socket.on('joined', (data) => log(`✅ Joined room: ${data.sessionId}`));
+
+        // D3.js setup
+        const svg = d3.select("#network");
+        const width = 900;
+        const height = 700;
+        
+        // Create main group for zooming/panning
+        const g = svg.append("g");
+        
+        let nodes = [];
+        let links = [];
+        let simulation;
+
+        // Color scale for different character importance
+        const colorScale = d3.scaleOrdinal()
+            .domain([1, 2, 3, 4, 5])
+            .range(['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57']);
+
+        // Add zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+        
+        svg.call(zoom);
+
+        function initializeVisualization() {
+            simulation = d3.forceSimulation()
+                .force("link", d3.forceLink().id(d => d.id)
+                    .distance(d => Math.max(120, 200 - d.weight * 10))
+                    .strength(d => Math.min(1, d.weight / 10)))
+                .force("charge", d3.forceManyBody()
+                    .strength(d => -800 - (d.mentions * 50)))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide()
+                    .radius(d => d.radius + 30))
+                .force("x", d3.forceX(width / 2).strength(0.1))
+                .force("y", d3.forceY(height / 2).strength(0.1));
+            
+            log('✅ Enhanced visualization initialized');
+        }
+
+        function updateCharacterList(data) {
+            if (!data || !data.characters || !data.interactions) return;
+
+            // Calculate interactions for each character
+            const characterInteractions = new Map();
+            
+            // Initialize all characters
+            data.characters.forEach(char => {
+                if (char.mentions >= 2) {
+                    characterInteractions.set(char.name, {
+                        character: char,
+                        totalInteractions: 0,
+                        partners: new Map()
+                    });
+                }
+            });
+
+            // Process interactions
+            data.interactions.forEach(interaction => {
+                if (interaction.weight >= 2) {
+                    const source = characterInteractions.get(interaction.source);
+                    const target = characterInteractions.get(interaction.target);
+                    
+                    if (source && target) {
+                        // Add to source's interactions
+                        source.totalInteractions += interaction.weight;
+                        source.partners.set(interaction.target, 
+                            (source.partners.get(interaction.target) || 0) + interaction.weight);
+                        
+                        // Add to target's interactions (bidirectional)
+                        target.totalInteractions += interaction.weight;
+                        target.partners.set(interaction.source, 
+                            (target.partners.get(interaction.source) || 0) + interaction.weight);
+                    }
+                }
+            });
+
+            // Sort characters by total interactions
+            const sortedCharacters = Array.from(characterInteractions.values())
+                .sort((a, b) => b.totalInteractions - a.totalInteractions);
+
+            // Generate HTML
+            const characterListHtml = sortedCharacters.map(item => {
+                const char = item.character;
+                const partners = Array.from(item.partners.entries())
+                    .sort((a, b) => b[1] - a[1]) // Sort by interaction weight
+                    .slice(0, 8); // Limit to top 8 interactions
+
+                const partnersHtml = partners.map(([name, weight]) => 
+                    `<span class="interaction-item" onclick="highlightCharacter('${name}')">${name} (${weight})</span>`
+                ).join('');
+
+                return `
+                    <div class="character-item" data-character="${char.name.toLowerCase()}">
+                        <div class="character-name" onclick="highlightCharacter('${char.name}')">
+                            <strong>${char.name}</strong> 
+                            <span class="character-total">(${item.totalInteractions})</span>
+                        </div>
+                        <div class="interactions-list">
+                            ${partnersHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('character-list').innerHTML = characterListHtml;
+            log(`📋 Character list updated: ${sortedCharacters.length} characters`);
+        }
+
+        function filterCharacters() {
+            const searchTerm = document.getElementById('character-search').value.toLowerCase();
+            const characterItems = document.querySelectorAll('.character-item');
+            
+            characterItems.forEach(item => {
+                const characterName = item.getAttribute('data-character');
+                if (characterName.includes(searchTerm) || searchTerm === '') {
+                    item.style.display = 'block';
+                    item.classList.remove('highlighted');
+                    if (searchTerm !== '' && characterName.includes(searchTerm)) {
+                        item.classList.add('highlighted');
+                    }
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        function highlightCharacter(characterName) {
+            // Clear previous highlights
+            g.selectAll('.character-node').attr('stroke', '#2c3e50').attr('stroke-width', 3);
+            g.selectAll('.character-label').attr('fill', 'white');
+            g.selectAll('.interaction-link').attr('stroke-opacity', 0.3);
+
+            // Find and highlight the character
+            const targetNode = nodes.find(node => node.name === characterName);
+            if (targetNode) {
+                // Highlight the target character
+                g.selectAll('.character-node')
+                    .filter(d => d.name === characterName)
+                    .attr('stroke', '#ff6b6b')
+                    .attr('stroke-width', 6);
+
+                // Highlight connected links and characters
+                g.selectAll('.interaction-link')
+                    .filter(d => d.source.name === characterName || d.target.name === characterName)
+                    .attr('stroke-opacity', 1)
+                    .attr('stroke', '#ff6b6b');
+
+                // Highlight connected characters
+                const connectedCharacters = links
+                    .filter(link => link.source.name === characterName || link.target.name === characterName)
+                    .map(link => link.source.name === characterName ? link.target.name : link.source.name);
+
+                g.selectAll('.character-node')
+                    .filter(d => connectedCharacters.includes(d.name))
+                    .attr('stroke', '#feca57')
+                    .attr('stroke-width', 4);
+
+                log(`🎯 Highlighted ${characterName} and ${connectedCharacters.length} connections`);
+            }
+
+            // Scroll character into view in sidebar if needed
+            const characterItems = document.querySelectorAll('.character-item');
+            characterItems.forEach(item => {
+                const itemName = item.querySelector('.character-name strong').textContent;
+                if (itemName === characterName) {
+                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    item.style.background = '#e3f2fd';
+                    setTimeout(() => {
+                        item.style.background = '#f8f9fa';
+                    }, 2000);
+                }
+            });
+        }
+
+        function updateVisualization(data) {
+            if (!data || !data.characters || !data.interactions) {
+                log('❌ Invalid data received');
+                return;
+            }
+
+            currentData = data; // Store for filtering
+            updateCharacterList(data); // Update the sidebar
+
+            log(`📊 Updating: ${data.characters.length} characters, ${data.interactions.length} interactions`);
+
+            // Filter out characters with very few mentions to reduce noise
+            const filteredCharacters = data.characters.filter(char => char.mentions >= 2);
+            
+            // Create character map
+            const characterMap = new Map();
+            
+            // Create enhanced node objects
+            nodes = filteredCharacters.map((char, index) => {
+                const importance = Math.min(5, Math.ceil(char.mentions / 5)); // 1-5 scale
+                const node = {
+                    id: char.name,
+                    name: char.name,
+                    mentions: char.mentions,
+                    description: char.description,
+                    radius: Math.max(25, Math.min(50, 15 + Math.sqrt(char.mentions) * 5)),
+                    importance: importance,
+                    color: colorScale(importance)
+                };
+                characterMap.set(char.name, node);
+                return node;
+            });
+
+            // Filter interactions for existing characters and minimum weight
+            const validInteractions = data.interactions.filter(interaction => 
+                characterMap.has(interaction.source) && 
+                characterMap.has(interaction.target) &&
+                interaction.weight >= 2
+            );
+
+            // Create enhanced link objects
+            links = validInteractions.map(interaction => ({
+                source: interaction.source,
+                target: interaction.target,
+                weight: interaction.weight,
+                contexts: interaction.contexts,
+                strokeWidth: Math.max(2, Math.min(8, Math.sqrt(interaction.weight) * 2))
+            }));
+
+            // Update stats
+            document.getElementById('network-stats').innerHTML = 
+                `👥 ${nodes.length} characters • 🔗 ${links.length} interactions`;
+
+            if (nodes.length === 0) {
+                log('⚠️ No characters to visualize');
+                return;
+            }
+
+            // Clear previous visualization
+            g.selectAll("*").remove();
+
+            // Create arrow markers for directed relationships
+            const defs = svg.append("defs");
+            
+            defs.append("marker")
+                .attr("id", "arrowhead")
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 8)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5")
+                .attr("fill", "#666");
+
+            // Create links with enhanced styling
+            const link = g.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(links)
+                .enter().append("line")
+                .attr("class", "interaction-link")
+                .attr("stroke", d => {
+                    const intensity = Math.min(1, d.weight / 10);
+                    return d3.interpolateRgb("#bbb", "#333")(intensity);
+                })
+                .attr("stroke-width", d => d.strokeWidth)
+                .attr("stroke-opacity", 0.8)
+                .attr("marker-end", "url(#arrowhead)")
+                .on("mouseover", function(event, d) {
+                    d3.select(this)
+                        .attr("stroke", "#ff6b6b")
+                        .attr("stroke-width", d.strokeWidth + 2);
+                    
+                    // Show interaction tooltip
+                    const tooltip = g.append("text")
+                        .attr("class", "interaction-tooltip")
+                        .attr("x", (d.source.x + d.target.x) / 2)
+                        .attr("y", (d.source.y + d.target.y) / 2)
+                        .attr("text-anchor", "middle")
+                        .attr("fill", "white")
+                        .attr("font-size", "12px")
+                        .attr("font-weight", "bold")
+                        .text(`Weight: ${d.weight}`);
+                })
+                .on("mouseout", function(event, d) {
+                    d3.select(this)
+                        .attr("stroke", d3.interpolateRgb("#bbb", "#333")(Math.min(1, d.weight / 10)))
+                        .attr("stroke-width", d.strokeWidth);
+                    
+                    g.selectAll(".interaction-tooltip").remove();
+                });
+
+            // Create nodes with enhanced styling
+            const node = g.append("g")
+                .attr("class", "nodes")
+                .selectAll("g")
+                .data(nodes)
+                .enter().append("g")
+                .attr("class", "character-group")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Add character circles
+            node.append("circle")
+                .attr("class", "character-node")
+                .attr("r", d => d.radius)
+                .attr("fill", d => d.color)
+                .attr("stroke", "#2c3e50")
+                .attr("stroke-width", 3)
+                .on("mouseover", function(event, d) {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .attr("r", d.radius * 1.2)
+                        .attr("stroke-width", 5);
+                })
+                .on("mouseout", function(event, d) {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .attr("r", d.radius)
+                        .attr("stroke-width", 3);
+                })
+                .on("click", function(event, d) {
+                    highlightCharacter(d.name);
+                });
+
+            // Add character labels inside circles
+            node.append("text")
+                .attr("class", "character-label")
+                .attr("fill", "white")
+                .attr("font-size", d => Math.max(10, Math.min(16, d.radius / 3)))
+                .attr("font-weight", "bold")
+                .text(d => {
+                    // Truncate long names to fit in circle
+                    const maxLength = Math.floor(d.radius / 4);
+                    return d.name.length > maxLength ? 
+                        d.name.substring(0, maxLength) + "..." : 
+                        d.name;
+                });
+
+            // Add tooltips
+            node.append("title")
+                .text(d => `${d.name}\n📊 Mentions: ${d.mentions}\n⭐ Importance: ${d.importance}/5\n📝 ${d.description}`);
+
+            // Update simulation
+            simulation.nodes(nodes);
+            simulation.force("link").links(links);
+
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node
+                    .attr("transform", d => {
+                        // Keep nodes within bounds
+                        d.x = Math.max(d.radius + 20, Math.min(width - d.radius - 20, d.x));
+                        d.y = Math.max(d.radius + 20, Math.min(height - d.radius - 20, d.y));
+                        return `translate(${d.x},${d.y})`;
+                    });
+            });
+
+            simulation.alpha(1).restart();
+            log(`✅ Visualization updated: clean network with ${nodes.length} key characters`);
+        }
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Socket event handlers
+        socket.on('analysis_update', (update) => {
+            log(`📨 ${update.type}: ${update.message || 'Processing...'}`);
+            const progressDiv = document.getElementById('progress');
+            
+            switch(update.type) {
+                case 'progress':
+                    progressDiv.innerHTML = `<div style="color: #3498db;">📊 ${update.message}</div>`;
+                    break;
+                    
+                case 'batch_complete':
+                    progressDiv.innerHTML = `
+                        <div style="color: #27ae60;">✅ Batch ${update.batchIndex + 1}/${update.totalBatches} complete</div>
+                        <div>👥 Characters: ${update.data.characters?.length || 0} | 🔗 Interactions: ${update.data.interactions?.length || 0}</div>
+                    `;
+                    updateVisualization(update.data);
+                    break;
+                    
+                case 'analysis_complete':
+                    progressDiv.innerHTML = `<div style="color: #27ae60; font-weight: bold;">🎉 ${update.message}</div>`;
+                    updateVisualization(update.data);
+                    break;
+                    
+                case 'error':
+                    progressDiv.innerHTML = `<div style="color: #e74c3c;">❌ ${update.message}</div>`;
+                    break;
+            }
+        });
+
+        async function testConnection() {
+            log('🔄 Testing connection...');
+            socket.emit('join', sessionId);
+        }
+
+        async function startAnalysis() {
+            log('🚀 Starting enhanced analysis...');
+            clearDebug();
+            
+            socket.emit('join', sessionId);
+            initializeVisualization();
+            
+            try {
+                const response = await fetch('http://localhost:3000/gutenberg/analyze-streaming', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId })
+                });
+                
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const result = await response.json();
+                log(`✅ Analysis started successfully`);
+                
+            } catch (error) {
+                log(`❌ Failed to start: ${error.message}`);
+            }
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            log('🎯 Enhanced visualization with character panel ready');
+        });
+    </script>
+</body>
+</html>

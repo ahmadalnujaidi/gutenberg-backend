@@ -1,0 +1,17 @@
+GET https://www.gutenberg.org/files/2701/2701-0.txt
+
+###
+GET https://www.gutenberg.org/ebooks/2701
+
+###
+GET https://gutendex.com/books
+
+
+
+
+
+
+
+###
+POST http://localhost:3000/gutenberg
+
