@@ -21,6 +21,7 @@ import {
     cors: {
       origin: '*',
     },
+    transports: ['websocket', 'polling'],
   })
   export class GutenbergGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
